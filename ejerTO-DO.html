@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestor de Notas</title>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f4f4f4;
+      color: #333;
+    }
+
+    #app {
+      max-width: 800px;
+      margin: 20px auto;
+      padding: 20px;
+      background-color: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      border-radius: 5px;
+    }
+
+    h1 {
+      color: #3498db;
+    }
+
+    form {
+      display: flex;
+      margin-bottom: 20px;
+    }
+
+    label {
+      margin-right: 20px;
+    }
+
+    input[type="text"] {
+      padding: 10px;
+      font-size: 16px;
+    }
+
+    button {
+      padding: 10px;
+      font-size: 16px;
+      background-color: #3498db;
+      color: #fff;
+      border: none;
+      cursor: pointer;
+    }
+
+    ul {
+      list-style-type: none;
+      padding: 0;
+    }
+
+    li {
+      border-bottom: 1px solid #ddd;
+      padding: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .checkbox-round {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 2px solid #333;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      margin-right: 10px;
+    }
+
+    .checkbox-round.checked {
+      background-color: #333;
+      color: #fff;
+    }
+
+    .prioridad-btn {
+      padding: 8px;
+      font-size: 12px;
+      cursor: pointer;
+      border: none;
+      border-radius: 5px;
+      margin-left: 5px;
+    }
+
+    .prioridad-btn.alta { background-color: #e74c3c; color: #fff; }
+    .prioridad-btn.media { background-color: #f39c12; color: #fff; }
+    .prioridad-btn.baja { background-color: #2ecc71; color: #fff; }
+
+    .borrar-btn {
+      padding: 8px;
+      font-size: 12px;
+      cursor: pointer;
+      background-color: #c0392b;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+    }
+
+    .borrar-btn:hover {
+      background-color: #962323;
+    }
+
+    p {
+      font-size: 14px;
+      color: #777;
+      margin-top: 10px;
+    }
+
+    a {
+      color: #3498db;
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <h1>Gestor de Notas</h1>
+
+  <form @submit.prevent="agregarNota">
+    <label>
+      Nueva Nota:
+      <input type="text" v-model="nuevaNota.texto" @keyup.enter="agregarNota">
+    </label>
+
+    <label>
+      Prioridad:
+      <button
+        v-for="prioridad in prioridades"
+        :key="prioridad"
+        class="prioridad-btn"
+        :class="{ selected: prioridad === nuevaNota.prioridad }"
+        @click="cambiarPrioridadNuevaNota(prioridad)"
+      >
+        {{ prioridad }}
+      </button>
+    </label>
+
+    <button type="submit">Agregar</button>
+  </form>
+
+  <label>
+    <input type="checkbox" v-model="filtrar"> Filtrar Notas
+  </label>
+
+  <label v-if="filtrar">
+    Filtrar por Prioridad:
+    <select v-model="filtroPrioridad">
+      <option value="">Todas</option>
+      <option value="alta">Alta</option>
+      <option value="media">Media</option>
+      <option value="baja">Baja</option>
+    </select>
+
+    Filtrar por Nombre:
+    <input type="text" v-model="filtroNombre">
+  </label>
+
+  <p>{{ pendientes }} pendientes de {{ total }}</p>
+
+  <ul>
+    <li v-for="(nota, index) in notasFiltradas" :key="index">
+      <!-- Checkbox redondo -->
+      <div
+        class="checkbox-round"
+        :class="{ checked: nota.completa }"
+        @click="toggleCompletada(index)"
+      >
+        &#10003;
+      </div>
+      {{ nota.texto }} - Prioridad: {{ nota.prioridad }} - {{ tiempoTranscurrido(nota.fecha) }}
+      <button @click="cambiarPrioridad(index, 'alta')" class="prioridad-btn" :class="{ selected: 'alta' === nota.prioridad }">Alta</button>
+      <button @click="cambiarPrioridad(index, 'media')" class="prioridad-btn" :class="{ selected: 'media' === nota.prioridad }">Media</button>
+      <button @click="cambiarPrioridad(index, 'baja')" class="prioridad-btn" :class="{ selected: 'baja' === nota.prioridad }">Baja</button>
+      <button @click="borrarNota(index)">Borrar</button>
+    </li>
+  </ul>
+
+  <p v-if="completadas.length > 0">
+    <a href="#" @click="borrarCompletadas">Borrar tareas completadas</a>
+  </p>
+</div>
+
+<script src="https://unpkg.com/vue@3"></script>
+<script>
+const app = Vue.createApp({
+  data() {
+    return {
+      listaNotas: [],
+      nuevaNota: { texto: "", prioridad: "media" },
+      filtrar: false,
+      filtroPrioridad: "",
+      filtroNombre: "",
+      prioridades: ["alta", "media", "baja"],
+    };
+  },
+  computed: {
+    notasFiltradas() {
+      let notasFiltradas = this.listaNotas;
+
+      if (this.filtrar) {
+        if (this.filtroPrioridad) {
+          notasFiltradas = notasFiltradas.filter(nota => nota.prioridad === this.filtroPrioridad);
+        }
+
+        if (this.filtroNombre) {
+          const filtroNombreLower = this.filtroNombre.toLowerCase();
+          notasFiltradas = notasFiltradas.filter(nota =>
+            nota.texto.toLowerCase().includes(filtroNombreLower)
+          );
+        }
+      }
+
+      return notasFiltradas;
+    },
+    pendientes() {
+      return this.listaNotas.filter(nota => !nota.completa).length;
+    },
+    total() {
+      return this.listaNotas.length;
+    },
+    completadas() {
+      return this.listaNotas.filter(nota => nota.completa);
+    },
+  },
+  methods: {
+    agregarNota() {
+      if (this.nuevaNota.texto.trim() !== "") {
+        // Calcular la fecha actual
+        const fechaActual = new Date();
+
+        this.listaNotas.push({
+          texto: this.nuevaNota.texto.trim(),
+          prioridad: this.nuevaNota.prioridad,
+          completa: false,
+          fecha: fechaActual,
+        });
+
+        // Limpiar el campo después de agregar la nota
+        this.nuevaNota.texto = "";
+      }
+    },
+    borrarNota(index) {
+      this.listaNotas.splice(index, 1);
+    },
+    borrarCompletadas() {
+      this.listaNotas = this.listaNotas.filter(nota => !nota.completa);
+    },
+    toggleCompletada(index) {
+      this.listaNotas[index].completa = !this.listaNotas[index].completa;
+    },
+    cambiarPrioridad(index, nuevaPrioridad) {
+      this.listaNotas[index].prioridad = nuevaPrioridad;
+    },
+    cambiarPrioridadNuevaNota(nuevaPrioridad) {
+      this.nuevaNota.prioridad = nuevaPrioridad;
+    },
+    leerNotas() {
+      const notas = localStorage.getItem('notas');
+      if (notas) {
+        this.listaNotas = JSON.parse(notas);
+      }
+    },
+    tiempoTranscurrido(fecha) {
+      const fechaNota = new Date(fecha);
+      const diferencia = Date.now() - fechaNota.getTime();
+
+      const segundos = Math.floor(diferencia / 1000);
+      const minutos = Math.floor(segundos / 60);
+      const horas = Math.floor(minutos / 60);
+      const dias = Math.floor(horas / 24);
+
+      if (segundos < 60) {
+        return `Hace ${segundos} segundo${segundos !== 1 ? 's' : ''}`;
+      } else if (minutos < 60) {
+        return `Hace ${minutos} minuto${minutos !== 1 ? 's' : ''}`;
+      } else if (horas < 24) {
+        return `Hace ${horas} hora${horas !== 1 ? 's' : ''}`;
+      } else {
+        return `Hace ${dias} día${dias !== 1 ? 's' : ''}`;
+      }
+    },
+  },
+  watch: {
+    listaNotas: {
+      handler() {
+        localStorage.setItem('notas', JSON.stringify(this.listaNotas));
+      },
+      deep: true,
+    },
+  },
+  created() {
+    this.leerNotas();
+  },
+});
+
+app.mount('#app');
+</script>
+
+</body>
+</html>
